@@ -906,7 +906,7 @@ pub const Node = struct {
 
     pub const SendCommand = struct {
         /// The command to send. See enum spa_node_command
-        command: Pod,
+        cmd: Pod,
     };
 
     pub fn MethodArgs(comptime method: Method) type {
@@ -1092,9 +1092,83 @@ pub const ClientNode = struct {
         port_buffers,
     };
 
+    pub const GetNode = struct {
+        version: u32,
+        new_id: Global,
+    };
+
+    pub const Update = struct {
+        change_mask: packed struct(u32) {
+            params: bool,
+            info: bool,
+            _: u30,
+        },
+        n_params: u32,
+        // TODO: (param: Pod)*
+        info: struct {
+            max_input_ports: u32,
+            max_output_ports: u32,
+            change_mask: packed struct(u64) {
+                flags: bool,
+                items: bool,
+                params: bool,
+                _: u61,
+            },
+            flags: u64,
+            props: []const pod.wire.Prop,
+            params: []const pod.wire.ParamInfo,
+        },
+    };
+
+    pub const PortUpdate = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        change_mask: packed struct(u32) {
+            params: bool,
+            info: bool,
+            _: u30,
+        },
+        n_params: u32,
+        // TODO: (param: Pod)*
+        info: struct {
+            change_mask: packed struct(u64) {
+                flags: bool,
+                rate_denom: bool,
+                items: bool,
+                params: bool,
+                _: u60,
+            },
+            flags: u64,
+            rate_num: u32,
+            rate_denom: u32,
+            props: []const pod.wire.Prop,
+            params: []const pod.wire.ParamInfo,
+        },
+    };
+
+    pub const SetActive = struct {
+        active: bool,
+    };
+
+    pub const Ev = struct {
+        event: Pod,
+    };
+
+    pub const PortBuffers = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        mix_id: pod.wire.Id,
+        // TODO: n_buffers struct here ..
+    };
+
     pub fn MethodArgs(comptime method: Method) type {
         return switch (method) {
-            else => @compileError("TODO"),
+            .get_node => GetNode,
+            .update => Update,
+            .port_update => PortUpdate,
+            .set_active => SetActive,
+            .event => Ev,
+            .port_buffers => PortBuffers,
         };
     }
 
@@ -1113,9 +1187,101 @@ pub const ClientNode = struct {
         port_set_mix_info,
     };
 
+    pub const Transport = struct {
+        read_fd: pod.wire.Fd,
+        write_fd: pod.wire.Fd,
+        memfd: u32,
+        offset: u32,
+        size: u32,
+    };
+
+    pub const SetParam = struct {
+        /// The param id to set
+        id: spa.param.Type,
+        /// Extra flags
+        flags: spa.ParamFlags,
+        /// The param object to set
+        param: Pod,
+    };
+
+    pub const SetIo = struct {
+        id: spa.param.IoType,
+        memid: u32,
+        offset: u32,
+        size: u32,
+    };
+
+    pub const Command = struct {
+        cmd: Pod,
+    };
+
+    pub const AddPort = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        props: []const pod.wire.Prop,
+    };
+
+    pub const RemovePort = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+    };
+
+    pub const PortSetParam = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        id: spa.param.Type,
+        flags: u32,
+        param: Pod,
+    };
+
+    pub const UseBuffers = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        mix_id: pod.wire.Id,
+        flags: pod.wire.Id,
+        // TODO: n_buffers struct here ..
+    };
+
+    pub const PortSetIo = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        mix_id: pod.wire.Id,
+        id: spa.param.IoType,
+        memid: u32,
+        offset: u32,
+        size: u32,
+    };
+
+    pub const SetActivation = struct {
+        node_id: pod.wire.Id,
+        signal_fd: pod.wire.Fd,
+        memid: u32,
+        offset: u32,
+        size: u32,
+    };
+
+    pub const PortSetMixInfo = struct {
+        direction: spa.param.Direction,
+        port_id: pod.wire.Id,
+        mix_id: pod.wire.Id,
+        peer_id: pod.wire.Id,
+        props: []const pod.wire.Prop,
+    };
+
     pub fn EventArgs(comptime event: Event) type {
         return switch (event) {
-            else => struct {}, // TODO
+            .transport => Transport,
+            .set_param => SetParam,
+            .set_io => SetIo,
+            .event => Ev,
+            .command => Command,
+            .add_port => AddPort,
+            .remove_port => RemovePort,
+            .port_set_param => PortSetParam,
+            .use_buffers => UseBuffers,
+            .port_set_io => PortSetIo,
+            .set_activation => SetActivation,
+            .port_set_mix_info => PortSetMixInfo,
         };
     }
 };
