@@ -23,7 +23,7 @@ const PwDumper = struct {
         try self.conn.readAll(self);
         try self.conn.write(.client, .client, .update_properties, .{
             .props = &.{
-                .{ .key = "application.name", .value = "pipewrangler-dump" },
+                .{ .key = .@"application.name", .value = "pipewrangler-dump" },
             },
         });
         try self.conn.readAll(self);
@@ -70,7 +70,6 @@ const PwDumper = struct {
 
     pub fn @"core::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.Core.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Core.StandardProps) catch @panic("fixme");
     }
 
     pub fn @"core::done"(self: *@This(), _: pw.wire.Id, done: pw.wire.Core.Done) !void {
@@ -81,9 +80,9 @@ const PwDumper = struct {
         self.writer.print("{s}\n", .{std.json.fmt(ping, .{ .whitespace = .indent_2 })}) catch {};
     }
 
-    pub fn @"core::error"(self: *@This(), _: pw.wire.Id, err: pw.wire.Core.Error) !void {
+    pub fn @"core::error"(_: *@This(), _: pw.wire.Id, err: pw.wire.Core.Error) !void {
         if (err.res == .IO or err.res == .NOENT) return;
-        self.writer.print("{s}\n", .{std.json.fmt(err, .{ .whitespace = .indent_2 })}) catch {};
+        std.log.err("{s}", .{std.json.fmt(err, .{ .whitespace = .indent_2 })});
         @panic("fixme");
     }
 
@@ -109,7 +108,6 @@ const PwDumper = struct {
 
     pub fn @"client::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.Client.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Client.StandardProps) catch @panic("fixme");
     }
 
     pub fn @"client::permissions"(self: *@This(), _: pw.wire.Id, permissions: pw.wire.Client.Permissions) !void {
@@ -119,9 +117,6 @@ const PwDumper = struct {
     pub fn @"registry::global_add"(self: *@This(), id: pw.wire.Id, global_add: pw.wire.Registry.GlobalAdd) !void {
         self.writer.print("{s}\n", .{std.json.fmt(global_add, .{ .whitespace = .indent_2 })}) catch {};
         const ext: pw.wire.Extension = try .fromName(global_add.type);
-        switch (ext) {
-            inline else => |const_ext| _ = global_add.props.map(const_ext.Schema().StandardProps) catch @panic("fixme"),
-        }
         if (ext == .core) return;
         if (ext == .client and id == .client) return;
         try self.conn.write(.registry, id, .bind, .{
@@ -138,9 +133,9 @@ const PwDumper = struct {
 
     pub fn @"device::info"(self: *@This(), id: pw.wire.Id, info: pw.wire.Device.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Device.StandardProps) catch @panic("fixme");
         var iter = info.param_infos.iterator();
         while (iter.next()) |kv| {
+            if (!kv.flags.read) continue;
             try self.conn.write(.device, id, .enum_params, .{
                 .seq = 69,
                 .id = kv.id,
@@ -157,22 +152,18 @@ const PwDumper = struct {
 
     pub fn @"factory::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.Factory.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Factory.StandardProps) catch @panic("fixme");
     }
 
     pub fn @"link::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.Link.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Link.StandardProps) catch @panic("fixme");
     }
 
     pub fn @"module::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.Module.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Module.StandardProps) catch @panic("fixme");
     }
 
     pub fn @"node::info"(self: *@This(), id: pw.wire.Id, info: pw.wire.Node.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Node.StandardProps) catch @panic("fixme");
         var iter = info.param_infos.iterator();
         while (iter.next()) |kv| {
             try self.conn.write(.node, id, .enum_params, .{
@@ -185,13 +176,12 @@ const PwDumper = struct {
         }
     }
 
-    pub fn @"node::param"(_: *@This(), _: pw.wire.Id, param: pw.wire.Node.Param) !void {
-        std.log.warn("{s}\n", .{std.json.fmt(param, .{ .whitespace = .indent_2 })});
+    pub fn @"node::param"(self: *@This(), _: pw.wire.Id, param: pw.wire.Node.Param) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(param, .{ .whitespace = .indent_2 })}) catch {};
     }
 
     pub fn @"port::info"(self: *@This(), id: pw.wire.Id, info: pw.wire.Port.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.Port.StandardProps) catch @panic("fixme");
         var iter = info.param_infos.iterator();
         while (iter.next()) |kv| {
             try self.conn.write(.port, id, .enum_params, .{
@@ -210,7 +200,6 @@ const PwDumper = struct {
 
     pub fn @"client_node::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.ClientNode.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
-        _ = info.props.map(pw.wire.ClientNode.StandardProps) catch @panic("fixme");
     }
 
     pub fn @"metadata::property"(self: *@This(), _: pw.wire.Id, property: pw.wire.Metadata.Property) !void {

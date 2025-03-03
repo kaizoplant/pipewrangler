@@ -3,12 +3,11 @@
 //! <https://docs.pipewire.org/page_native_protocol.html>
 
 const std = @import("std");
+const spa = @import("spa/spa.zig");
+const pod = spa.pod;
+const Pod = pod.Pod;
 
 pub const VERSION: u32 = 3;
-
-const spa = @import("spa.zig");
-const pod = @import("pod.zig");
-const Pod = pod.Pod;
 
 pub const ReadError = error{
     InvalidHeader,
@@ -20,10 +19,10 @@ pub const WriteError = pod.WriteError;
 
 pub const E = D: {
     var fields = std.meta.fields(std.posix.E)[0..].*;
-    for (&fields) |*field| field.value = -field.value;
+    for (&fields) |*field| field.value = @as(u32, @bitCast(@as(i32, -field.value)));
     break :D @Type(.{
         .@"enum" = .{
-            .tag_type = i32,
+            .tag_type = u32,
             .fields = &fields,
             .decls = &.{},
             .is_exhaustive = true,
@@ -92,7 +91,7 @@ pub const ServerFooter = struct {
         generation: Generation,
     };
 
-    footer: pod.wire.Struct,
+    footer: pod.types.Struct,
     index: usize = 0,
 
     pub fn init(footer: Pod) !@This() {
@@ -128,7 +127,7 @@ pub const Header = extern struct {
         size: u24,
         opcode: u8,
     },
-    seq: u32,
+    seq: i32,
     n_fds: u32,
 
     pub fn init(reader: anytype) ReadError!@This() {
@@ -164,43 +163,6 @@ pub const Access = enum {
 pub const Core = struct {
     pub const Type = "PipeWire:Interface:Core";
 
-    pub const StandardProps = struct {
-        @"config.name": ?[:0]const u8,
-        @"application.name": ?[:0]const u8,
-        @"application.process.binary": ?[:0]const u8,
-        @"application.language": ?[:0]const u8,
-        @"application.process.id": ?[:0]const u8,
-        @"application.process.user": ?[:0]const u8,
-        @"application.process.host": ?[:0]const u8,
-        @"application.process.session-id": ?[:0]const u8,
-        @"window.x11.display": ?[:0]const u8,
-        @"link.max-buffers": ?u16,
-        @"core.daemon": ?bool,
-        @"core.name": ?[:0]const u8,
-        @"module.x11.bell": ?bool,
-        @"module.access": ?bool,
-        @"module.jackdbus-detect": ?bool,
-        @"cpu.max-align": ?u8,
-        @"default.clock.rate": ?u16,
-        @"default.clock.quantum": ?u16,
-        @"default.clock.min-quantum": ?u16,
-        @"default.clock.max-quantum": ?u16,
-        @"default.clock.quantum-limit": ?u16,
-        @"default.clock.quantum-floor": ?u16,
-        @"default.video.width": ?u16,
-        @"default.video.height": ?u16,
-        @"default.video.rate.num": ?u16,
-        @"default.video.rate.denom": ?u16,
-        @"log.level": ?u8,
-        @"clock.power-of-two-quantum": ?bool,
-        @"mem.warn-mlock": ?bool,
-        @"mem.allow-mlock": ?bool,
-        @"settings.check-quantum": ?bool,
-        @"settings.check-rate": ?bool,
-        @"object.id": ?Global,
-        @"object.serial": ?u32,
-    };
-
     pub const Method = enum(u16) {
         hello = 1,
         sync,
@@ -217,21 +179,21 @@ pub const Core = struct {
 
     pub const Sync = struct {
         /// The id will be returned in the Done event
-        id: i32,
+        id: Global,
         /// Is usually generated automatically and will be returned in the Done event
-        seq: u32,
+        seq: i32,
     };
 
     pub const Pong = struct {
-        id: i32,
-        seq: u32,
+        id: Global,
+        seq: i32,
     };
 
     pub const Error = struct {
         /// The id of the proxy that is in error
         id: Id,
         /// A seq number from the failing request (if any)
-        seq: u32,
+        seq: i32,
         /// A negative errno style error code
         res: E,
         /// An error message
@@ -253,7 +215,7 @@ pub const Core = struct {
         /// Version of the object
         version: u32,
         /// Extra properties to create the object
-        props: []const pod.Prop,
+        props: []const pod.containers.Prop,
         /// The proxy id of the new object
         new_id: Id,
     };
@@ -291,7 +253,7 @@ pub const Core = struct {
         /// The id of the server (0)
         id: Global,
         /// A unique cookie for this server
-        cookie: i32,
+        cookie: u32,
         /// The name of the user running the server
         user_name: [:0]const u8,
         /// The name of the host running the server
@@ -303,20 +265,20 @@ pub const Core = struct {
         /// A set of bits with changes to the info
         change_mask: packed struct(u64) {
             props: bool,
-            _: u63,
+            _: u63 = 0,
         },
         /// Optional key/value properties, valid when change_mask has (1<<0)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub const Done = struct {
-        id: i32,
-        seq: u32,
+        id: Global,
+        seq: i32,
     };
 
     pub const Ping = struct {
-        id: i32,
-        seq: u32,
+        id: Global,
+        seq: i32,
     };
 
     // Error is same as method
@@ -334,11 +296,11 @@ pub const Core = struct {
         /// A server allocated id for this memory
         id: Memory,
         /// The memory type, see enum spa_data_type
-        type: spa.param.DataType,
+        type: spa.wire.DataType,
         /// The index of the fd sent with this message
         fd: u64,
         /// Extra flags
-        flags: spa.DataFlags,
+        flags: spa.flags.Data,
     };
 
     pub const RemoveMem = struct {
@@ -351,7 +313,7 @@ pub const Core = struct {
         /// The global_id as it will appear in the registry
         global_id: Global,
         /// The properties of the global
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub fn EventArgs(comptime event: Event) type {
@@ -372,52 +334,6 @@ pub const Core = struct {
 pub const Client = struct {
     pub const Type = "PipeWire:Interface:Client";
 
-    pub const StandardProps = struct {
-        @"module.id": ?Global,
-        @"pipewire.protocol": ?[:0]const u8,
-        @"pipewire.sec.pid": ?u32,
-        @"pipewire.sec.uid": ?u32,
-        @"pipewire.sec.gid": ?u32,
-        @"pipewire.sec.label": ?[:0]const u8,
-        @"pipewire.sec.socket": ?[:0]const u8,
-        @"pipewire.access": ?Access,
-        @"config.name": ?[:0]const u8,
-        @"application.name": ?[:0]const u8,
-        @"application.process.binary": ?[:0]const u8,
-        @"application.language": ?[:0]const u8,
-        @"application.process.id": ?[:0]const u8,
-        @"application.process.user": ?[:0]const u8,
-        @"application.process.host": ?[:0]const u8,
-        @"application.process.machine-id": ?[:0]const u8,
-        @"application.process.session-id": ?[:0]const u8,
-        @"window.x11.display": ?[:0]const u8,
-        @"link.max-buffers": ?u16,
-        @"core.daemon": ?bool,
-        @"core.name": ?[:0]const u8,
-        @"module.x11.bell": ?bool,
-        @"module.access": ?bool,
-        @"module.jackdbus-detect": ?bool,
-        @"cpu.max-align": ?u8,
-        @"default.clock.rate": ?u16,
-        @"default.clock.quantum": ?u16,
-        @"default.clock.min-quantum": ?u16,
-        @"default.clock.max-quantum": ?u16,
-        @"default.clock.quantum-limit": ?u16,
-        @"default.clock.quantum-floor": ?u16,
-        @"default.video.width": ?u16,
-        @"default.video.height": ?u16,
-        @"default.video.rate.num": ?u16,
-        @"default.video.rate.denom": ?u16,
-        @"log.level": ?u8,
-        @"clock.power-of-two-quantum": ?bool,
-        @"mem.warn-mlock": ?bool,
-        @"mem.allow-mlock": ?bool,
-        @"settings.check-quantum": ?bool,
-        @"settings.check-rate": ?bool,
-        @"object.id": ?Global,
-        @"object.serial": ?u32,
-    };
-
     pub const Method = enum(u16) {
         @"error" = 1,
         update_properties,
@@ -435,17 +351,17 @@ pub const Client = struct {
     };
 
     pub const UpdateProperties = struct {
-        props: []const pod.wire.Prop,
+        props: []const pod.containers.Prop,
     };
 
     pub const GetPermissions = struct {
         /// The start index of the permissions to get
-        index: i32,
+        index: u32,
         /// The number of permissions to get
-        num: i32,
+        num: u32,
     };
 
-    pub const UpdatePermissions = []const pod.IdPermission;
+    pub const UpdatePermissions = []const pod.containers.IdPermission;
 
     pub fn MethodArgs(comptime method: Method) type {
         return switch (method) {
@@ -467,17 +383,17 @@ pub const Client = struct {
         /// The changes emitted by this event
         change_mask: packed struct(u64) {
             props: bool,
-            _: u63,
+            _: u63 = 0,
         },
         /// Properties of this object, valid when change_mask has (1<<0)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub const Permissions = struct {
         /// Index of the first permission
-        index: i32,
+        index: u32,
         // The permission for the given id
-        permissions: pod.wire.IdPermission.List,
+        permissions: pod.containers.IdPermission.List,
     };
 
     pub fn EventArgs(comptime event: Event) type {
@@ -490,8 +406,6 @@ pub const Client = struct {
 
 pub const Registry = struct {
     pub const Type = "PipeWire:Interface:Registry";
-
-    pub const StandardProps = struct {};
 
     pub const Method = enum(u16) {
         bind = 1,
@@ -506,7 +420,7 @@ pub const Registry = struct {
     };
 
     pub const Destroy = struct {
-        id: Global.Id,
+        id: Id,
     };
 
     pub fn MethodArgs(comptime method: Method) type {
@@ -523,10 +437,10 @@ pub const Registry = struct {
 
     pub const GlobalAdd = struct {
         id: Global,
-        permission: spa.Permission,
+        permission: spa.flags.Permission,
         type: [:0]const u8,
         version: u32,
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub const GlobalRemove = struct {
@@ -544,58 +458,6 @@ pub const Registry = struct {
 pub const Device = struct {
     pub const Type = "PipeWire:Interface:Device";
 
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"api.acp.auto-port": ?bool,
-        @"api.acp.auto-profile": ?bool,
-        @"api.alsa.card": ?u32,
-        @"api.alsa.card.longname": ?[:0]const u8,
-        @"api.alsa.card.name": ?[:0]const u8,
-        @"api.alsa.path": ?[:0]const u8,
-        @"api.alsa.split-enable": ?bool,
-        @"api.alsa.use-acp": ?bool,
-        @"alsa.card": ?u32,
-        @"alsa.card_name": ?[:0]const u8,
-        @"alsa.long_card_name": ?[:0]const u8,
-        @"alsa.driver_name": ?[:0]const u8,
-        @"alsa.mixer_name": ?[:0]const u8,
-        @"alsa.components": ?[:0]const u8,
-        @"alsa.id": ?[:0]const u8,
-        @"api.dbus.ReserveDevice1": ?[:0]const u8,
-        @"api.dbus.ReserveDevice1.Priority": ?i32,
-        @"api.bluez5.address": ?[:0]const u8,
-        @"api.bluez5.class": ?[:0]const u8,
-        @"api.bluez5.connection": ?[:0]const u8,
-        @"api.bluez5.device": ?[:0]const u8,
-        @"api.bluez5.icon": ?[:0]const u8,
-        @"api.bluez5.path": ?[:0]const u8,
-        @"bluez5.profile": ?[:0]const u8,
-        @"device.alias": ?[:0]const u8,
-        @"device.api": ?[:0]const u8,
-        @"device.bus": ?[:0]const u8,
-        @"device.bus-path": ?[:0]const u8,
-        @"device.description": ?[:0]const u8,
-        @"device.form-factor": ?[:0]const u8,
-        @"device.enum.api": ?[:0]const u8,
-        @"device.icon-name": ?[:0]const u8,
-        @"device.name": ?[:0]const u8,
-        @"device.nick": ?[:0]const u8,
-        @"device.plugged.usec": ?u64,
-        @"device.product.id": ?[:0]const u8,
-        @"device.product.name": ?[:0]const u8,
-        @"device.string": ?[:0]const u8,
-        @"device.subsystem": ?[:0]const u8,
-        @"device.sysfs.path": ?[:0]const u8,
-        @"device.vendor.id": ?[:0]const u8,
-        @"device.vendor.name": ?[:0]const u8,
-        @"media.class": ?[:0]const u8,
-        @"spa.object.id": ?Global,
-        @"factory.id": ?Global,
-        @"client.id": ?Global,
-        @"object.id": ?Global,
-        @"object.path": ?[:0]const u8,
-    };
-
     pub const Method = enum(u16) {
         subscribe_params = 1,
         enum_params,
@@ -604,27 +466,27 @@ pub const Device = struct {
 
     pub const SubscribeParams = struct {
         /// Array of param Ids to subscribe to
-        ids: []const spa.param.Type,
+        ids: []const spa.wire.ParamType,
     };
 
     pub const EnumParams = struct {
         /// An automatically generated sequence number, will be copied into the reply
         seq: i32,
         /// The param id to enumerate
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// The first param index to retrieve
-        index: i32,
+        index: u32,
         /// The number of params to receive
-        num: i32,
+        num: u32,
         /// An optional filter object for the param
         filter: Pod,
     };
 
     pub const SetParam = struct {
         /// The param id to set
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// Extra flags
-        flags: spa.ParamFlags,
+        flags: spa.flags.Param,
         /// The param object to set
         param: Pod,
     };
@@ -649,23 +511,23 @@ pub const Device = struct {
         change_mask: packed struct(u64) {
             props: bool,
             param_infos: bool,
-            _: u62,
+            _: u62 = 0,
         },
         /// Extra properties, valid when change_mask is (1<<0)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
         /// Info about the parameters, valid when change_mask is (1<<1) For each parameter, the id and current flags are given
-        param_infos: pod.wire.ParamInfo.Map,
+        param_infos: pod.containers.ParamInfo.Map,
     };
 
     pub const Param = struct {
         /// The sequence number send by the client EnumParams or server generated in the SubscribeParams case
         seq: i32,
         /// The param id that is reported, see enum spa_param_type
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// The index of the parameter
-        index: i32,
+        index: u32,
         /// The index of the next parameter
-        next: i32,
+        next: u32,
         /// The parameter. The object type depends on the id
         param: Pod,
     };
@@ -680,14 +542,6 @@ pub const Device = struct {
 
 pub const Factory = struct {
     pub const Type = "PipeWire:Interface:Factory";
-
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"module.id": ?Global,
-        @"factory.name": ?[:0]const u8,
-        @"factory.type.name": ?[:0]const u8,
-        @"factory.type.version": ?u32,
-    };
 
     pub const Method = enum(u16) {};
 
@@ -707,10 +561,10 @@ pub const Factory = struct {
         /// Bitfield of changed values
         change_mask: packed struct(u64) {
             props: bool,
-            _: u63,
+            _: u63 = 0,
         },
         /// Optional properties of the factory, valid when change_mask is (1<<0)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub fn EventArgs(comptime event: Event) type {
@@ -722,10 +576,6 @@ pub const Factory = struct {
 
 pub const Link = struct {
     pub const Type = "PipeWire:Interface:Link";
-
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-    };
 
     pub const Method = enum(u16) {};
 
@@ -749,16 +599,16 @@ pub const Link = struct {
             state: bool,
             format: bool,
             props: bool,
-            _: u61,
+            _: u61 = 0,
         },
         /// The state of the link, valid when change_mask has (1<<0)
-        state: i32,
+        state: spa.wire.LinkState,
         /// An error message
         @"error": ?[:0]const u8,
         /// An optional format for the link, valid when change_mask has (1<<1)
         format: Pod,
         /// Optional properties of the link, valid when change_mask is (1<<2)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub fn EventArgs(comptime event: Event) type {
@@ -770,11 +620,6 @@ pub const Link = struct {
 
 pub const Module = struct {
     pub const Type = "PipeWire:Interface:Module";
-
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"module.name": ?[:0]const u8,
-    };
 
     pub const Method = enum(u16) {};
 
@@ -794,10 +639,10 @@ pub const Module = struct {
         /// Bitfield of changed values
         change_mask: packed struct(u64) {
             props: bool,
-            _: u63,
+            _: u63 = 0,
         },
         /// Optional properties of the link, valid when change_mask is (1<<0)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
     };
 
     pub fn EventArgs(comptime event: Event) type {
@@ -810,66 +655,6 @@ pub const Module = struct {
 pub const Node = struct {
     pub const Type = "PipeWire:Interface:Node";
 
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"api.alsa.card": ?u32,
-        @"api.alsa.card.longname": ?[:0]const u8,
-        @"api.alsa.card.name": ?[:0]const u8,
-        @"api.alsa.path": ?[:0]const u8,
-        @"api.alsa.pcm.card": ?u32,
-        @"api.alsa.pcm.stream": ?[:0]const u8,
-        @"alsa.card": ?u32,
-        @"alsa.card_name": ?[:0]const u8,
-        @"alsa.long_card_name": ?[:0]const u8,
-        @"alsa.class": ?[:0]const u8,
-        @"alsa.driver_name": ?[:0]const u8,
-        @"alsa.mixer_name": ?[:0]const u8,
-        @"alsa.name": ?[:0]const u8,
-        @"alsa.components": ?[:0]const u8,
-        @"alsa.id": ?[:0]const u8,
-        @"alsa.resolution_bits": ?u8,
-        @"alsa.subclass": ?[:0]const u8,
-        @"alsa.subdevice": ?u32,
-        @"alsa.subdevice_name": ?[:0]const u8,
-        @"alsa.sync.id": ?[:0]const u8,
-        @"audio.channels": ?u16,
-        @"audio.position": ?[:0]const u8,
-        @"card.profile.device": ?u32,
-        @"api.dbus.ReserveDevice1": ?[:0]const u8,
-        @"api.dbus.ReserveDevice1.Priority": ?i32,
-        @"api.bluez5.address": ?[:0]const u8,
-        @"api.bluez5.class": ?[:0]const u8,
-        @"api.bluez5.connection": ?[:0]const u8,
-        @"api.bluez5.device": ?[:0]const u8,
-        @"api.bluez5.icon": ?[:0]const u8,
-        @"api.bluez5.path": ?[:0]const u8,
-        @"bluez5.profile": ?[:0]const u8,
-        @"device.api": ?[:0]const u8,
-        @"device.class": ?[:0]const u8,
-        @"device.id": ?u32,
-        @"device.profile.description": ?[:0]const u8,
-        @"device.profile.name": ?[:0]const u8,
-        @"device.routes": ?u32,
-        @"factory.name": ?[:0]const u8,
-        @"media.class": ?[:0]const u8,
-        @"node.description": ?[:0]const u8,
-        @"node.name": ?[:0]const u8,
-        @"node.nick": ?[:0]const u8,
-        @"node.pause-on-idle": ?bool,
-        @"port.group": ?[:0]const u8,
-        @"priority.driver": ?u32,
-        @"priority.session": ?u32,
-        @"clock.quantym-limit": ?u32,
-        @"node.driver": ?bool,
-        @"node.loop.name": ?[:0]const u8,
-        @"library.name": ?[:0]const u8,
-        @"spa.object.id": ?Global,
-        @"factory.id": ?Global,
-        @"client.id": ?Global,
-        @"object.id": ?Global,
-        @"object.path": ?[:0]const u8,
-    };
-
     pub const Method = enum(u16) {
         subscribe_params = 1,
         enum_params,
@@ -879,14 +664,14 @@ pub const Node = struct {
 
     pub const SubscribeParams = struct {
         // Array of param Ids to subscribe to
-        ids: []const spa.param.Type,
+        ids: []const spa.wire.ParamType,
     };
 
     pub const EnumParams = struct {
         /// An automatically generated sequence number, will be copied into the reply
-        seq: u32,
+        seq: i32,
         /// The param id to enumerate
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// The first param index to retrieve
         index: u32,
         /// The number of params to retrieve
@@ -897,9 +682,9 @@ pub const Node = struct {
 
     pub const SetParam = struct {
         /// The param id to set
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// Extra flags
-        flags: spa.ParamFlags,
+        flags: spa.flags.Param,
         /// The param object to set
         param: Pod,
     };
@@ -922,9 +707,9 @@ pub const Node = struct {
         /// The global id of the node
         id: Global,
         /// The maximum input ports for the node
-        max_input_ports: u16,
+        max_input_ports: u32,
         /// The maximum output ports for the node
-        max_output_ports: u16,
+        max_output_ports: u32,
         /// Bitfield of changed values
         change_mask: packed struct(u64) {
             n_input_ports: bool,
@@ -932,27 +717,27 @@ pub const Node = struct {
             state: bool,
             props: bool,
             param_infos: bool,
-            _: u59,
+            _: u59 = 0,
         },
         /// The number of input ports, when change_mask has (1<<0)
-        n_input_ports: u16,
+        n_input_ports: u32,
         /// The number of output ports, when change_mask has (1<<1)
-        n_output_ports: u16,
+        n_output_ports: u32,
         /// The current node state, when change_mask has (1<<2)
-        state: i32,
+        state: spa.wire.NodeState,
         /// An error message
         @"error": ?[:0]const u8,
         /// Extra properties, valid when change_mask is (1<<3)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
         /// Info about the parameters, valid when change_mask is (1<<4) For each parameter, the id and current flags are given
-        param_infos: pod.wire.ParamInfo.Map,
+        param_infos: pod.containers.ParamInfo.Map,
     };
 
     pub const Param = struct {
         /// The sequence number send by the client EnumParams or server generated in the SubscribeParams case.
-        seq: u32,
+        seq: i32,
         /// The param id that is reported, see enum spa_param_type
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// The index of the parameter
         index: u32,
         /// The index of the next parameter
@@ -977,23 +762,6 @@ pub const Node = struct {
 pub const Port = struct {
     pub const Type = "PipeWire:Interface:Port";
 
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"object.id": ?Global,
-        @"object.path": ?[:0]const u8,
-        @"format.dsp": ?[:0]const u8,
-        @"node.id": ?Global,
-        @"audio.channel": ?[:0]const u8,
-        @"port.id": ?Global,
-        @"port.name": ?[:0]const u8,
-        @"port.direction": ?spa.param.Direction,
-        @"port.physical": ?bool,
-        @"port.terminal": ?bool,
-        @"port.monitor": ?bool,
-        @"port.alias": ?[:0]const u8,
-        @"port.group": ?[:0]const u8,
-    };
-
     pub const Method = enum(u16) {
         subscribe_params = 1,
         enum_params,
@@ -1001,14 +769,14 @@ pub const Port = struct {
 
     pub const SubscribeParams = struct {
         /// Array of param Ids to subscribe to
-        ids: []const spa.param.Type,
+        ids: []const spa.wire.ParamType,
     };
 
     pub const EnumParams = struct {
         /// An automatically generated sequence number, will be copied into the reply
-        seq: u32,
+        seq: i32,
         /// The param id to enumerate
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// The first param index to retrieve
         index: u32,
         /// The number of params to retrieve
@@ -1033,24 +801,24 @@ pub const Port = struct {
         /// The global id of the port
         id: Global,
         /// The direction of the port, see enum pw_direction
-        direction: spa.param.Direction,
+        direction: spa.wire.Direction,
         /// Bitfield of changed values
         change_mask: packed struct(u64) {
             props: bool,
             param_infos: bool,
-            _: u62,
+            _: u62 = 0,
         },
         /// Extra properties, valid when change_mask is (1<<0)
-        props: pod.wire.Prop.Map,
+        props: pod.containers.KeyValue.Map,
         /// Info about the parameters, valid when change_mask is (1<<1) For each parameter, the id and current flags are given
-        param_infos: pod.wire.ParamInfo.Map,
+        param_infos: pod.containers.ParamInfo.Map,
     };
 
     pub const Param = struct {
         /// The sequence number send by the client EnumParams or server generated in the SubscribeParams case.
-        seq: u32,
+        seq: i32,
         /// The param id that is reported, see enum spa_param_type
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// The index of the parameter
         index: u32,
         /// The index of the next parameter
@@ -1070,19 +838,6 @@ pub const Port = struct {
 pub const ClientNode = struct {
     pub const Type = "PipeWire:Interface:ClientNode";
 
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"module.id": ?Global,
-        @"pipewire.protocol": ?[:0]const u8,
-        @"pipewire.sec.pid": ?u32,
-        @"pipewire.sec.uid": ?u32,
-        @"pipewire.sec.gid": ?u32,
-        @"pipewire.sec.label": ?[:0]const u8,
-        @"pipewire.sec.socket": ?[:0]const u8,
-        @"pipewire.access": ?Access,
-        @"application.name": ?[:0]const u8,
-    };
-
     pub const Method = enum(u16) {
         get_node = 1,
         update,
@@ -1101,7 +856,7 @@ pub const ClientNode = struct {
         change_mask: packed struct(u32) {
             params: bool,
             info: bool,
-            _: u30,
+            _: u30 = 0,
         },
         n_params: u32,
         // TODO: (param: Pod)*
@@ -1112,21 +867,29 @@ pub const ClientNode = struct {
                 flags: bool,
                 items: bool,
                 params: bool,
-                _: u61,
+                _: u61 = 0,
             },
-            flags: u64,
-            props: []const pod.wire.Prop,
-            params: []const pod.wire.ParamInfo,
+            flags: packed struct(u64) {
+                rt: bool,
+                in_dynamic_ports: bool,
+                out_dynamic_ports: bool,
+                in_port_config: bool,
+                need_configure: bool,
+                @"async": bool,
+                _: u58 = 0,
+            },
+            props: []const pod.containers.Prop,
+            params: []const pod.containers.ParamInfo,
         },
     };
 
     pub const PortUpdate = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
         change_mask: packed struct(u32) {
             params: bool,
             info: bool,
-            _: u30,
+            _: u30 = 0,
         },
         n_params: u32,
         // TODO: (param: Pod)*
@@ -1136,13 +899,12 @@ pub const ClientNode = struct {
                 rate_denom: bool,
                 items: bool,
                 params: bool,
-                _: u60,
+                _: u60 = 0,
             },
-            flags: u64,
-            rate_num: u32,
-            rate_denom: u32,
-            props: []const pod.wire.Prop,
-            params: []const pod.wire.ParamInfo,
+            flags: spa.flags.Port,
+            rate: pod.types.Fraction,
+            props: []const pod.containers.Prop,
+            params: []const pod.containers.ParamInfo,
         },
     };
 
@@ -1155,9 +917,9 @@ pub const ClientNode = struct {
     };
 
     pub const PortBuffers = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
-        mix_id: pod.wire.Id,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
+        mix_id: pod.types.Id,
         // TODO: n_buffers struct here ..
     };
 
@@ -1188,8 +950,8 @@ pub const ClientNode = struct {
     };
 
     pub const Transport = struct {
-        read_fd: pod.wire.Fd,
-        write_fd: pod.wire.Fd,
+        read_fd: pod.types.Fd,
+        write_fd: pod.types.Fd,
         memfd: u32,
         offset: u32,
         size: u32,
@@ -1197,15 +959,15 @@ pub const ClientNode = struct {
 
     pub const SetParam = struct {
         /// The param id to set
-        id: spa.param.Type,
+        id: spa.wire.ParamType,
         /// Extra flags
-        flags: spa.ParamFlags,
+        flags: spa.flags.Param,
         /// The param object to set
         param: Pod,
     };
 
     pub const SetIo = struct {
-        id: spa.param.IoType,
+        id: spa.wire.IoType,
         memid: u32,
         offset: u32,
         size: u32,
@@ -1216,56 +978,59 @@ pub const ClientNode = struct {
     };
 
     pub const AddPort = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
-        props: []const pod.wire.Prop,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
+        props: []const pod.containers.Prop,
     };
 
     pub const RemovePort = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
     };
 
     pub const PortSetParam = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
-        id: spa.param.Type,
-        flags: u32,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
+        id: spa.wire.ParamType,
+        flags: spa.flags.PortParam,
         param: Pod,
     };
 
     pub const UseBuffers = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
-        mix_id: pod.wire.Id,
-        flags: pod.wire.Id,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
+        mix_id: pod.types.Id,
+        flags: packed struct(u32) {
+            alloc: bool,
+            _: u31 = 0,
+        },
         // TODO: n_buffers struct here ..
     };
 
     pub const PortSetIo = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
-        mix_id: pod.wire.Id,
-        id: spa.param.IoType,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
+        mix_id: pod.types.Id,
+        id: spa.wire.IoType,
         memid: u32,
         offset: u32,
         size: u32,
     };
 
     pub const SetActivation = struct {
-        node_id: pod.wire.Id,
-        signal_fd: pod.wire.Fd,
+        node_id: pod.types.Id,
+        signal_fd: pod.types.Fd,
         memid: u32,
         offset: u32,
         size: u32,
     };
 
     pub const PortSetMixInfo = struct {
-        direction: spa.param.Direction,
-        port_id: pod.wire.Id,
-        mix_id: pod.wire.Id,
-        peer_id: pod.wire.Id,
-        props: []const pod.wire.Prop,
+        direction: spa.wire.Direction,
+        port_id: pod.types.Id,
+        mix_id: pod.types.Id,
+        peer_id: pod.types.Id,
+        props: []const pod.containers.Prop,
     };
 
     pub fn EventArgs(comptime event: Event) type {
@@ -1288,14 +1053,6 @@ pub const ClientNode = struct {
 
 pub const Metadata = struct {
     pub const Type = "PipeWire:Interface:Metadata";
-
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-        @"factory.id": ?Global,
-        @"module.id": ?Global,
-        @"client.id": ?Global,
-        @"metadata.name": ?[:0]const u8,
-    };
 
     pub const Method = enum(u16) {
         set_property = 1,
@@ -1341,10 +1098,6 @@ pub const Metadata = struct {
 pub const Profiler = struct {
     pub const Type = "PipeWire:Interface:Profiler";
 
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-    };
-
     pub const Method = enum(u16) {};
 
     pub const Event = enum(u16) {
@@ -1365,10 +1118,6 @@ pub const Profiler = struct {
 
 pub const SecurityContext = struct {
     pub const Type = "PipeWire:Interface:SecurityContext";
-
-    pub const StandardProps = struct {
-        @"object.serial": ?u32,
-    };
 
     pub const Method = enum(u16) {
         add_listener,
@@ -1433,7 +1182,7 @@ pub const Extension = enum {
                 try Pod.write(payload, counter.writer());
             },
         };
-        const header: pod.wire.Header = .{
+        const header: pod.types.Header = .{
             .type = .@"struct",
             .size = @intCast(counter.bytes_written),
         };
@@ -1446,7 +1195,7 @@ pub const Extension = enum {
         };
     }
 
-    pub fn write(comptime self: @This(), id: Id, comptime method: self.Schema().Method, seq: u32, args: self.Schema().MethodArgs(method), extra: Extra, writer: anytype) WriteError!void {
+    pub fn write(comptime self: @This(), id: Id, comptime method: self.Schema().Method, seq: i32, args: self.Schema().MethodArgs(method), extra: Extra, writer: anytype) WriteError!void {
         var counter = std.io.countingWriter(std.io.null_writer);
         try Pod.write(args, counter.writer());
         try writeFooters(extra.footers, counter.writer());

@@ -24,7 +24,7 @@ const PwQuery = struct {
         try self.conn.readAll(self);
         try self.conn.write(.client, .client, .update_properties, .{
             .props = &.{
-                .{ .key = "application.name", .value = "pipewrangler-query" },
+                .{ .key = .@"application.name", .value = "pipewrangler-query" },
             },
         });
         try self.conn.readAll(self);

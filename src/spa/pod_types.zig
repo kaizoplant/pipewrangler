@@ -1,38 +1,16 @@
 const std = @import("std");
-const spa = @import("../spa.zig");
-const Pod = @import("../pod.zig").Pod;
-
-pub const Type = enum(u32) {
-    none = 1,
-    bool,
-    id,
-    int,
-    long,
-    float,
-    double,
-    string,
-    bytes,
-    rectangle,
-    fraction,
-    bitmap,
-    array,
-    @"struct",
-    object,
-    sequence,
-    pointer,
-    fd,
-    choice,
-};
+const spa = @import("spa.zig");
+const Pod = @import("pod.zig").Pod;
 
 pub const Header = extern struct {
     size: u32,
-    type: Type,
+    type: Pod.Type,
 
     pub fn read(reader: anytype) !@This() {
         var header: @This() = undefined;
         _ = try reader.readAll(std.mem.asBytes(&header));
-        if (@intFromEnum(header.type) < @intFromEnum(Type.none)) return error.InvalidPodHeader;
-        if (@intFromEnum(header.type) > @intFromEnum(Type.choice)) return error.InvalidPodHeader;
+        if (@intFromEnum(header.type) < @intFromEnum(Pod.Type.none)) return error.InvalidPodHeader;
+        if (@intFromEnum(header.type) > @intFromEnum(Pod.Type.choice)) return error.InvalidPodHeader;
         return header;
     }
 };
@@ -158,7 +136,7 @@ pub const Id = enum(u32) {
     }
 };
 
-pub const Int = enum(i32) {
+pub const Int = enum(u32) {
     _,
 
     pub fn read(_: std.mem.Allocator, size: u32, reader: anytype) !@This() {
@@ -197,12 +175,12 @@ pub const Int = enum(i32) {
     }
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        const val: i32 = @intFromEnum(self);
+        const val: u32 = @intFromEnum(self);
         try writer.print("Int:{}", .{val});
     }
 };
 
-pub const Long = enum(i64) {
+pub const Long = enum(u64) {
     _,
 
     pub fn read(_: std.mem.Allocator, size: u32, reader: anytype) !@This() {
@@ -237,7 +215,7 @@ pub const Long = enum(i64) {
     }
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        const val: i64 = @intFromEnum(self);
+        const val: u64 = @intFromEnum(self);
         try writer.print("Long:{}", .{val});
     }
 };
@@ -539,7 +517,7 @@ pub const Bitmap = struct {
     }
 };
 
-pub const Array = union(Type) {
+pub const Array = union(Pod.Type) {
     none: void,
     bool: []const Bool,
     id: []const Id,
@@ -559,6 +537,7 @@ pub const Array = union(Type) {
     pointer: []const Pointer,
     fd: []const Fd,
     choice: void,
+    pod: void,
 
     pub fn read(arena: std.mem.Allocator, size: u32, reader: anytype) !@This() {
         var child_size: u32 = undefined;
@@ -566,7 +545,7 @@ pub const Array = union(Type) {
         if (try reader.readAll(std.mem.asBytes(&child_size)) != 4) return error.InvalidArray;
         if (try reader.readAll(std.mem.asBytes(&child_type)) != 4) return error.InvalidArray;
         const array_size = size - 8;
-        inline for (std.meta.fields(Type)) |field| {
+        inline for (std.meta.fields(Pod.Type)) |field| {
             const Field = @FieldType(@This(), field.name);
             if (Field != void and field.value == child_type) {
                 const Child = std.meta.Child(Field);
@@ -685,6 +664,7 @@ pub const Struct = struct {
         return switch (@typeInfo(T)) {
             .@"struct" => |ti| D: {
                 var st: T = undefined;
+                if (ti.fields.len != self.fields.len) return error.IncompatibleDestinationType;
                 inline for (ti.fields, 0..) |dst_field, idx| {
                     var src_field = &self.fields[idx];
                     @field(st, dst_field.name) = try src_field.map(dst_field.type);
@@ -713,7 +693,7 @@ pub const Struct = struct {
     }
 };
 
-pub const Object = union(spa.Object) {
+pub const Object = union(spa.id.Object) {
     pub const AnyProperty = struct {
         key: u32,
         flags: u32,
@@ -735,17 +715,17 @@ pub const Object = union(spa.Object) {
     fn Property(T: anytype) type {
         return struct {
             id: Id,
-            props: []const T.Union,
+            props: []const T,
 
             pub fn read(arena: std.mem.Allocator, id: Id, size: u32, reader: anytype) !@This() {
                 var counter = std.io.countingReader(reader);
-                var props: std.ArrayListUnmanaged(T.Union) = .empty;
+                var props: std.ArrayListUnmanaged(T) = .empty;
                 errdefer props.deinit(arena);
                 while (counter.bytes_read < size) {
                     var any: AnyProperty = try .read(arena, size, counter.reader());
-                    inline for (std.meta.fields(T)) |field| {
+                    inline for (std.meta.fields(std.meta.Tag(T))) |field| {
                         if (field.value == any.key) {
-                            try props.append(arena, @unionInit(T.Union, field.name, try any.pod.map(@FieldType(T.Union, field.name))));
+                            try props.append(arena, @unionInit(T, field.name, try any.pod.map(@FieldType(T, field.name))));
                         }
                     }
                 }
@@ -776,25 +756,25 @@ pub const Object = union(spa.Object) {
     }
 
     prop_info: Property(spa.param.PropInfo),
-    props: Property(spa.param.Props),
-    media_format: Property(spa.param.MediaFormat),
-    buffers: Property(spa.param.Buffers),
-    meta: Property(spa.param.Meta),
-    io: Property(spa.param.Io),
-    profile: Property(spa.param.Profile),
-    port_config: Property(spa.param.PortConfig),
-    route: Property(spa.param.Route),
+    props: Property(spa.param.Prop),
+    media_format: Property(spa.param.Format),
+    param_buffers: Property(spa.param.Buffers),
+    param_meta: Property(spa.param.Meta),
+    param_io: Property(spa.param.Io),
+    param_profile: Property(spa.param.Profile),
+    param_port_config: Property(spa.param.PortConfig),
+    param_route: Property(spa.param.Route),
     profiler: Property(spa.param.Profile),
-    latency: Property(spa.param.Latency),
-    process_latency: Property(spa.param.ProcessLatency),
-    tag: Property(spa.param.Tag),
+    param_latency: Property(spa.param.Latency),
+    param_process_latency: Property(spa.param.ProcessLatency),
+    param_tag: Property(spa.param.Tag),
 
     pub fn read(arena: std.mem.Allocator, size: u32, reader: anytype) !@This() {
         var id: Id = undefined;
         var raw_type: u32 = undefined;
         if (try reader.readAll(std.mem.asBytes(&raw_type)) != 4) return error.InvalidObject;
         if (try reader.readAll(std.mem.asBytes(&id)) != 4) return error.InvalidObject;
-        const obj_type = std.meta.intToEnum(spa.Object, raw_type) catch return error.InvalidObject;
+        const obj_type = std.meta.intToEnum(spa.id.Object, raw_type) catch return error.InvalidObject;
         const props_size = size - 8;
         var buf = try arena.alloc(u8, props_size);
         errdefer arena.free(buf);
@@ -963,7 +943,7 @@ pub const Choice = struct {
         if (try reader.readAll(std.mem.asBytes(&child_size)) != 4) return error.InvalidChoice;
         if (try reader.readAll(std.mem.asBytes(&child_raw_type)) != 4) return error.InvalidChoice;
 
-        const child_type = std.meta.intToEnum(Type, child_raw_type) catch return error.InvalidChoice;
+        const child_type = std.meta.intToEnum(Pod.Type, child_raw_type) catch return error.InvalidChoice;
         const array_size = size - 16;
         const n_items = array_size / child_size;
 
@@ -1030,227 +1010,36 @@ pub const Choice = struct {
                 try jws.write(self.choices[3]);
                 try jws.endObject();
             },
-            .@"enum", .flags => try jws.write(self.choices),
+            .@"enum", .flags => {
+                try jws.beginObject();
+                try jws.objectField("default");
+                try jws.write(self.choices[0]);
+                try jws.objectField("choices");
+                try jws.write(self.choices[1..]);
+                try jws.endObject();
+            },
         }
     }
 };
 
-pub fn PodMap(comptime Key: Type, comptime Value: Type, comptime Tag: ?type, KV: type) type {
-    return struct {
-        fields: []const Pod,
-
-        pub fn init(pod: Pod) !@This() {
-            if (pod != .@"struct") return error.InvalidMap;
-            const st = pod.@"struct";
-            if (st.fields.len <= 0) return error.InvalidMap;
-            if (st.fields[0] != .int) return error.InvalidMap;
-            const n_fields: usize = @intCast(@intFromEnum(st.fields[0].int));
-            if (n_fields * 2 > st.fields.len - 1) return error.InvalidMap;
-            var idx: usize = 0;
-            while (idx < n_fields) : (idx += 2) {
-                if (st.fields[1..][idx + 0] != Key) return error.InvalidMap;
-                if (st.fields[1..][idx + 1] != Value) return error.InvalidMap;
-                const key = st.fields[1..][idx];
-                if (Tag) |TagType| {
-                    _ = switch (Key) {
-                        .string => std.meta.stringToEnum(TagType, key.string.slice) catch return error.InvalidMap,
-                        inline .int, .long, .id => switch (key) {
-                            inline .int, .long, .id => |v| std.meta.intToEnum(TagType, @intFromEnum(v)) catch return error.InvalidMap,
-                            else => unreachable,
-                        },
-                        else => @compileError("unsupported key"),
-                    };
-                }
-            }
-            return .{ .fields = st.fields[1..][0 .. n_fields * 2] };
-        }
-
-        fn keyName(self: @This(), idx: usize) []const u8 {
-            const key = self.fields[idx];
-            if (Tag) |TagType| {
-                return switch (Key) {
-                    .string => std.meta.stringToEnum(TagType, key.string.slice) catch return error.Corrupted,
-                    inline .int, .long, .id => switch (key) {
-                        inline .int, .long, .id => |v| @tagName(@as(TagType, @enumFromInt(@intFromEnum(v)))),
-                        else => unreachable,
-                    },
-                    else => @compileError("unsupported key"),
-                };
-            } else {
-                return switch (Key) {
-                    .string => key.string.slice,
-                    else => @compileError("tag required for non string key"),
-                };
-            }
-        }
-
-        pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-            var iter = self.iterator();
-            while (iter.next()) |kv| try writer.print("{}", .{kv});
-        }
-
-        pub fn jsonStringify(self: @This(), jws: anytype) !void {
-            try jws.beginObject();
-            var iter = self.iterator();
-            while (iter.next()) |kv| try kv.jsonStringifyRaw(jws);
-            try jws.endObject();
-        }
-
-        const Container = @This();
-
-        pub const Iterator = struct {
-            container: *const Container,
-            cursor: usize = 0,
-
-            pub fn next(self: *@This()) ?KV {
-                if (self.cursor >= self.container.fields.len) return null;
-                defer self.cursor += 2;
-                var kv: KV = undefined;
-                inline for (std.meta.fields(KV), 0..) |field, idx| {
-                    const pod = self.container.fields[self.cursor + idx];
-                    @field(kv, field.name) = pod.map(field.type) catch unreachable;
-                    if (idx > 1) @compileError("KV should only contain 2 fields");
-                }
-                return kv;
-            }
-        };
-
-        pub fn iterator(self: *const @This()) Iterator {
-            return .{ .container = self };
-        }
-
-        pub fn map(self: @This(), T: type) !T {
-            const ti = @typeInfo(T);
-            if (ti != .@"struct") @compileError("T must be a struct");
-            var st: T = undefined;
-            inline for (ti.@"struct".fields) |dst_field| {
-                comptime var error_if_not_found = true;
-                if (dst_field.defaultValue()) |def| {
-                    @field(st, dst_field.name) = def;
-                    error_if_not_found = false;
-                } else if (@typeInfo(dst_field.type) == .optional) {
-                    @field(st, dst_field.name) = null;
-                    error_if_not_found = false;
-                }
-                var found: bool = false;
-                var idx: usize = 0;
-                while (idx < self.fields.len) : (idx += 2) {
-                    if (std.mem.eql(u8, self.keyName(idx), dst_field.name)) {
-                        const value = self.fields[idx + 1];
-                        if (@typeInfo(dst_field.type) == .optional) {
-                            @field(st, dst_field.name) = try value.map(std.meta.Child(dst_field.type));
-                        } else {
-                            @field(st, dst_field.name) = try value.map(dst_field.type);
-                        }
-                        found = true;
-                        break;
-                    }
-                }
-                if (error_if_not_found and !found) {
-                    std.log.debug("missing: {s}", .{dst_field.name});
-                    return error.Corrupted;
-                }
-            }
-            return st;
-        }
-    };
-}
-
-pub fn PodList(comptime Key: Type, comptime Value: Type, KV: type) type {
-    return struct {
-        fields: []const Pod,
-
-        pub fn init(pod: Pod) !@This() {
-            if (pod != .@"struct") return error.InvalidList;
-            const st = pod.@"struct";
-            if (st.fields.len <= 0) return error.InvalidList;
-            if (st.fields[0] != .int) return error.InvalidList;
-            const n_fields: usize = @intCast(@intFromEnum(st.fields[0].int));
-            if (n_fields * 2 > st.fields.len - 1) return error.InvalidList;
-            var idx: usize = 0;
-            while (idx < n_fields) : (idx += 2) {
-                if (st.fields[1..][idx + 0] != Key) return error.InvalidList;
-                if (st.fields[1..][idx + 1] != Value) return error.InvalidList;
-            }
-            return .{ .fields = st.fields[1..][0 .. n_fields * 2] };
-        }
-
-        pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-            var iter = self.iterator();
-            while (iter.next()) |kv| try writer.print("{}", .{kv});
-        }
-
-        pub fn jsonStringify(self: @This(), jws: anytype) !void {
-            try jws.beginArray();
-            var iter = self.iterator();
-            while (iter.next()) |kv| try jws.write(kv);
-            try jws.endArray();
-        }
-
-        const Container = @This();
-
-        pub const Iterator = struct {
-            container: *const Container,
-            cursor: usize = 0,
-
-            pub fn next(self: *@This()) ?KV {
-                if (self.cursor >= self.container.fields.len) return null;
-                defer self.cursor += 2;
-                var kv: KV = undefined;
-                inline for (std.meta.fields(KV), 0..) |field, idx| {
-                    const pod = self.container.fields[self.cursor + idx];
-                    @field(kv, field.name) = pod.map(field.type) catch unreachable;
-                    if (idx > 1) @compileError("KV should only contain 2 fields");
-                }
-                return kv;
-            }
-        };
-
-        pub fn iterator(self: *const @This()) Iterator {
-            return .{ .container = self };
-        }
-    };
-}
-
-pub const Prop = struct {
-    pub const Map = PodMap(.string, .string, null, @This());
-
-    key: [:0]const u8,
-    value: [:0]const u8,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{} = {}", .{ self.key, self.value });
+pub const Self = struct {
+    pub fn read(_: std.mem.Allocator, _: u32, _: anytype) !@This() {
+        unreachable;
     }
 
-    fn jsonStringifyRaw(self: @This(), jws: anytype) !void {
-        try jws.objectField(self.key);
-        try jws.write(self.value);
-    }
-};
-
-pub const ParamInfo = struct {
-    pub const Map = PodMap(.id, .int, spa.param.Type, @This());
-
-    id: spa.param.Type,
-    flags: spa.param.InfoFlags,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{} = {}", .{ self.id, self.flags });
+    pub fn write(_: void, _: anytype) !void {
+        unreachable;
     }
 
-    fn jsonStringifyRaw(self: @This(), jws: anytype) !void {
-        try jws.objectField(@tagName(self.id));
-        try jws.write(self.flags);
+    pub fn writeSelf(_: @This(), _: anytype) !void {
+        unreachable;
     }
-};
 
-pub const IdPermission = struct {
-    pub const List = PodList(.id, .int, @This());
+    pub fn map(_: @This(), T: type) !T {
+        unreachable;
+    }
 
-    id: Id,
-    permission: spa.Permission,
-
-    pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{} = {}", .{ self.id, self.permission });
+    pub fn format(_: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+        try writer.writeAll("Self");
     }
 };

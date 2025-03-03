@@ -1,5 +1,4 @@
 const std = @import("std");
-const log = std.log.scoped(.pipewrangler);
 const build_options = @import("build_options");
 
 const root = @import("root");
@@ -11,14 +10,13 @@ pub const Options = struct {
 };
 
 pub const wire = @import("wire.zig");
-
 pub const ReadError = wire.ReadError;
 pub const WriteError = wire.WriteError;
 
 pub const Connection = struct {
     stream: std.net.Stream,
-    sent_seq: u32 = 0,
-    recv_seq: u32 = 0,
+    sent_seq: i32 = 0,
+    recv_seq: i32 = 0,
     registry_generation: u64 = 0,
     dirty_generation: bool = false,
 
@@ -140,7 +138,12 @@ pub const Connection = struct {
                                 const args = try payload.map(Schema.EventArgs(ev));
                                 @call(.auto, @field(Handler, sig), .{ handler, header.id, args }) catch |err| {
                                     debug("-!- {}", .{err});
-                                    // TODO: pass error to server
+                                    self.write(.core, .core, .@"error", .{
+                                        .id = header.id,
+                                        .seq = header.seq,
+                                        .res = .INVAL,
+                                        .msg = @errorName(err),
+                                    }) catch {};
                                 };
                             } else {
                                 debug("<- {s} ~ {} ~ {} (unimplemented)", .{ sig, header.id, header.seq });
@@ -199,5 +202,6 @@ fn setNonBlock(fd: std.posix.fd_t, blocking: bool) error{FcntlFailed}!void {
 
 fn debug(comptime fmt: []const u8, args: anytype) void {
     if (!options.debug) return;
+    const log = std.log.scoped(.pipewrangler);
     log.debug(fmt, args);
 }
