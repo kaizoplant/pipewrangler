@@ -1,6 +1,6 @@
 const std = @import("std");
-const spa = @import("spa.zig");
-const pod = @import("pod.zig");
+const spa = @import("../spa.zig");
+const pod = spa.pod;
 const Pod = pod.Pod;
 
 fn Iterator(Container: type, Field: type, comptime opts: ContainerOptions, comptime kind: enum { map, list }) type {
@@ -95,6 +95,8 @@ fn extractFields(comptime FieldTypes: []const Pod.Type, Field: type, st: pod.typ
 pub fn MapContainer(comptime FieldTypes: []const Pod.Type, Field: type, comptime opts: ContainerOptions) type {
     std.debug.assert(FieldTypes.len == 2);
     std.debug.assert(opts.inline_fields == .yes);
+    const KeyType = std.meta.fields(Field)[0].type;
+    const ValueType = std.meta.fields(Field)[1].type;
     return struct {
         fields: []const Pod,
 
@@ -105,9 +107,8 @@ pub fn MapContainer(comptime FieldTypes: []const Pod.Type, Field: type, comptime
         }
 
         fn keyName(self: @This(), idx: usize) []const u8 {
-            const Tag = std.meta.fields(Field)[0];
-            const key = self.fields[idx].map(Tag) catch unreachable;
-            return switch (@typeInfo(Tag)) {
+            const key = self.fields[idx].map(KeyType) catch unreachable;
+            return switch (@typeInfo(KeyType)) {
                 .pointer => key,
                 .@"enum" => @tagName(key),
                 else => @compileError("unsupported key"),
@@ -124,6 +125,20 @@ pub fn MapContainer(comptime FieldTypes: []const Pod.Type, Field: type, comptime
 
         pub fn iterator(self: *const @This()) Iterator(@This(), Field, opts, .map) {
             return .{ .container = self };
+        }
+
+        pub fn get(self: @This(), key: KeyType) ?ValueType {
+            const fields = std.meta.fields(Field);
+            var iter = self.iterator();
+            while (iter.next()) |kv| {
+                const is_eql = switch (@typeInfo(KeyType)) {
+                    .pointer => std.mem.eql(std.meta.Child(KeyType), key, @field(kv, fields[0].name)),
+                    else => key == @field(kv, fields[0].name),
+                };
+                if (!is_eql) continue;
+                return @field(kv, fields[1].name);
+            }
+            return null;
         }
 
         pub fn map(self: @This(), T: type) !T {
@@ -150,7 +165,6 @@ pub fn MapContainer(comptime FieldTypes: []const Pod.Type, Field: type, comptime
                     }
                 }
                 if (error_if_not_found and !found) {
-                    std.log.debug("missing: {s}", .{dst_field.name});
                     return error.IncompatibleDestinationType;
                 }
             }
@@ -287,6 +301,6 @@ pub const Class = struct {
     devices: []const u32,
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-        try writer.print("{s} = {}, {s}, {}", .{ self.name, self.num_nodes, self.prop, self.devices });
+        try writer.print("{s} = {}, {s}, {any}", .{ self.name, self.num_nodes, self.prop, self.devices });
     }
 };

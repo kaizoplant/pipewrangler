@@ -237,7 +237,7 @@ pub const Core = struct {
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
         done,
         ping,
@@ -316,7 +316,7 @@ pub const Core = struct {
         props: pod.containers.KeyValue.Map,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
             .done => Done,
@@ -372,7 +372,7 @@ pub const Client = struct {
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
         permissions,
     };
@@ -396,7 +396,7 @@ pub const Client = struct {
         permissions: pod.containers.IdPermission.List,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
             .permissions => Permissions,
@@ -430,7 +430,7 @@ pub const Registry = struct {
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         global_add,
         global_remove,
     };
@@ -447,7 +447,7 @@ pub const Registry = struct {
         id: Global,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .global_add => GlobalAdd,
             .global_remove => GlobalRemove,
@@ -499,7 +499,7 @@ pub const Device = struct {
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
         param,
     };
@@ -532,7 +532,7 @@ pub const Device = struct {
         param: Pod,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
             .param => Param,
@@ -545,7 +545,7 @@ pub const Factory = struct {
 
     pub const Method = enum(u16) {};
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
     };
 
@@ -567,7 +567,7 @@ pub const Factory = struct {
         props: pod.containers.KeyValue.Map,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
         };
@@ -579,7 +579,7 @@ pub const Link = struct {
 
     pub const Method = enum(u16) {};
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
     };
 
@@ -611,7 +611,7 @@ pub const Link = struct {
         props: pod.containers.KeyValue.Map,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
         };
@@ -623,7 +623,7 @@ pub const Module = struct {
 
     pub const Method = enum(u16) {};
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
     };
 
@@ -645,7 +645,7 @@ pub const Module = struct {
         props: pod.containers.KeyValue.Map,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
         };
@@ -691,7 +691,7 @@ pub const Node = struct {
 
     pub const SendCommand = struct {
         /// The command to send. See enum spa_node_command
-        cmd: Pod,
+        cmd: spa.wire.NodeCommand,
     };
 
     pub fn MethodArgs(comptime method: Method) type {
@@ -746,12 +746,12 @@ pub const Node = struct {
         param: Pod,
     };
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
         param,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
             .param => Param,
@@ -792,7 +792,7 @@ pub const Port = struct {
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         info,
         param,
     };
@@ -827,7 +827,7 @@ pub const Port = struct {
         param: Pod,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .info => Info,
             .param => Param,
@@ -912,7 +912,7 @@ pub const ClientNode = struct {
         active: bool,
     };
 
-    pub const Ev = struct {
+    pub const Event = struct {
         event: Pod,
     };
 
@@ -929,12 +929,12 @@ pub const ClientNode = struct {
             .update => Update,
             .port_update => PortUpdate,
             .set_active => SetActive,
-            .event => Ev,
+            .event => Event,
             .port_buffers => PortBuffers,
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         transport,
         set_param,
         set_io,
@@ -1033,12 +1033,12 @@ pub const ClientNode = struct {
         props: []const pod.containers.Prop,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .transport => Transport,
             .set_param => SetParam,
             .set_io => SetIo,
-            .event => Ev,
+            .event => Event,
             .command => Command,
             .add_port => AddPort,
             .remove_port => RemovePort,
@@ -1076,7 +1076,7 @@ pub const Metadata = struct {
         };
     }
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         property,
     };
 
@@ -1088,7 +1088,7 @@ pub const Metadata = struct {
         value: [:0]const u8,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .property => Property,
         };
@@ -1100,7 +1100,7 @@ pub const Profiler = struct {
 
     pub const Method = enum(u16) {};
 
-    pub const Event = enum(u16) {
+    pub const Events = enum(u16) {
         profile,
     };
 
@@ -1109,7 +1109,7 @@ pub const Profiler = struct {
         object: Pod,
     };
 
-    pub fn EventArgs(comptime event: Event) type {
+    pub fn EventArgs(comptime event: Events) type {
         return switch (event) {
             .profile => Profile,
         };
@@ -1124,7 +1124,7 @@ pub const SecurityContext = struct {
         create,
     };
 
-    pub const Event = enum(u16) {};
+    pub const Events = enum(u16) {};
 };
 
 pub const Extension = enum {

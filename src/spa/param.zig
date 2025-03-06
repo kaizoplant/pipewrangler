@@ -155,6 +155,65 @@ pub const Route = union(wire.ParamRoute) {
     save: bool,
 };
 
+pub const Profiler = union(wire.Profiler) {
+    pub const Info = struct {
+        counter: u64,
+        load_fast: f32,
+        load_medium: f32,
+        load_slow: f32,
+        xrun_count: u32,
+    };
+
+    pub const Clock = struct {
+        flags: u32,
+        id: u32,
+        name: [:0]const u8,
+        nsec: u64,
+        rate: pod.types.Fraction,
+        position: u64,
+        duration: u64,
+        delay: u64,
+        rate_diff: f64,
+        next_nsec: u64,
+        transport_state: u32,
+        cycle: ?u32 = null,
+        xrun_duration: ?u64 = null,
+    };
+
+    pub const Block = struct {
+        id: u32,
+        name: [:0]const u8,
+        prev_signal: u64,
+        signal: u64,
+        awake: u64,
+        finish: u64,
+        status: u32,
+        latency: pod.types.Fraction,
+        xrun_count: u32,
+    };
+
+    pub const FollowerClock = struct {
+        id: u32,
+        name: [:0]const u8,
+        nsec: u64,
+        rate: pod.types.Fraction,
+        position: u64,
+        duration: u64,
+        delay: u64,
+        rate_diff: f64,
+        next_nsec: u64,
+        transport_state: u32,
+        cycle: u32,
+        xrun_duration: u64,
+    };
+
+    info: Info,
+    clock: Clock,
+    driver_block: Block,
+    follower_block: Block,
+    follower_clock: FollowerClock,
+};
+
 pub const Latency = union(wire.ParamLatency) {
     direction: wire.Direction,
     min_quantum: f32,

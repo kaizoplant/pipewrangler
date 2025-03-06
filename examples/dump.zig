@@ -41,19 +41,7 @@ const PwDumper = struct {
     }
 
     // This handler implements these extensions
-    pub const extensions: []const pw.wire.Extension = &.{
-        .core,
-        .client,
-        .registry,
-        .device,
-        .factory,
-        .link,
-        .module,
-        .node,
-        .port,
-        .metadata,
-        .profiler,
-    };
+    pub const extensions: []const pw.wire.Extension = std.enums.values(pw.wire.Extension);
 
     pub fn @"pw::ext"(self: *@This(), id: pw.wire.Id) ?pw.wire.Extension {
         return switch (id) {
@@ -200,6 +188,54 @@ const PwDumper = struct {
 
     pub fn @"client_node::info"(self: *@This(), _: pw.wire.Id, info: pw.wire.ClientNode.Info) !void {
         self.writer.print("{s}\n", .{std.json.fmt(info, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::transport"(self: *@This(), _: pw.wire.Id, transport: pw.wire.ClientNode.Transport) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(transport, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::set_param"(self: *@This(), _: pw.wire.Id, set_param: pw.wire.ClientNode.SetParam) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(set_param, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::set_io"(self: *@This(), _: pw.wire.Id, set_io: pw.wire.ClientNode.SetIo) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(set_io, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::event"(self: *@This(), _: pw.wire.Id, event: pw.wire.ClientNode.Event) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(event, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::command"(self: *@This(), _: pw.wire.Id, command: pw.wire.ClientNode.Command) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(command, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::add_port"(self: *@This(), _: pw.wire.Id, add_port: pw.wire.ClientNode.AddPort) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(add_port, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::remove_port"(self: *@This(), _: pw.wire.Id, remove_port: pw.wire.ClientNode.RemovePort) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(remove_port, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::port_set_param"(self: *@This(), _: pw.wire.Id, port_set_param: pw.wire.ClientNode.PortSetParam) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(port_set_param, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::use_buffers"(self: *@This(), _: pw.wire.Id, use_buffers: pw.wire.ClientNode.UseBuffers) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(use_buffers, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::port_set_io"(self: *@This(), _: pw.wire.Id, port_set_io: pw.wire.ClientNode.PortSetIo) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(port_set_io, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::set_activation"(self: *@This(), _: pw.wire.Id, set_activation: pw.wire.ClientNode.SetActivation) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(set_activation, .{ .whitespace = .indent_2 })}) catch {};
+    }
+
+    pub fn @"client_node::port_set_mix_info"(self: *@This(), _: pw.wire.Id, port_set_mix_info: pw.wire.ClientNode.PortSetMixInfo) !void {
+        self.writer.print("{s}\n", .{std.json.fmt(port_set_mix_info, .{ .whitespace = .indent_2 })}) catch {};
     }
 
     pub fn @"metadata::property"(self: *@This(), _: pw.wire.Id, property: pw.wire.Metadata.Property) !void {

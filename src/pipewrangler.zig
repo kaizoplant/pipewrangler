@@ -78,7 +78,7 @@ pub const Connection = struct {
                 @compileError("handler must have a `pub const extensions: []const pw.wire.Extension` specifying the extensions it implements");
             }
             for (Handler.extensions) |ext| {
-                for (std.enums.values(ext.Schema().Event)) |ev| {
+                for (std.enums.values(ext.Schema().Events)) |ev| {
                     const sig = std.fmt.comptimePrint("{s}::{s}", .{ @tagName(ext), @tagName(ev) });
                     const ext_name = toPascalCaseComptime(@tagName(ext));
                     const ev_name = toPascalCaseComptime(@tagName(ev));
@@ -127,8 +127,8 @@ pub const Connection = struct {
         switch (ext) {
             inline else => |tag| {
                 const Schema = tag.Schema();
-                if (std.meta.fields(Schema.Event).len > 0) {
-                    const event: Schema.Event = @enumFromInt(header.msg.opcode);
+                if (std.meta.fields(Schema.Events).len > 0) {
+                    const event: Schema.Events = @enumFromInt(header.msg.opcode);
                     switch (event) {
                         inline else => |ev| {
                             const sig = std.fmt.comptimePrint("{s}::{s}", .{ @tagName(tag), @tagName(ev) });

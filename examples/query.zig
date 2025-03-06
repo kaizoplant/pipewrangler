@@ -160,7 +160,7 @@ pub fn main() !void {
     };
 
     const writer = std.io.getStdOut().writer().any();
-    var dumper: PwQuery = try .init(writer, what);
-    defer dumper.deinit();
-    try dumper.query();
+    var query: PwQuery = try .init(writer, what);
+    defer query.deinit();
+    try query.query();
 }

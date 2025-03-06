@@ -3,10 +3,11 @@
 
 const std = @import("std");
 const spa = @import("spa.zig");
-pub const types = @import("pod_types.zig");
-pub const containers = @import("pod_containers.zig");
+pub const types = @import("pod/types.zig");
+pub const containers = @import("pod/containers.zig");
 
 pub const MapError = error{
+    InvalidArray,
     InvalidMap,
     InvalidList,
     IncompatibleDestinationType,
@@ -38,7 +39,11 @@ pub const ReadError = error{
     OutOfMemory,
 } || MapError || std.net.Stream.ReadError;
 
-pub const WriteError = std.net.Stream.WriteError;
+pub const WriteError = error{
+    InvalidPod,
+    InvalidArray,
+    InvalidChoice,
+} || std.net.Stream.WriteError;
 
 pub const Pod = union(spa.id.Pod) {
     pub const Type = spa.id.Pod;
@@ -63,15 +68,13 @@ pub const Pod = union(spa.id.Pod) {
     choice: types.Choice,
     pod: types.Self,
 
-    pub fn readType(arena: std.mem.Allocator, kind: Type, size: u32, aligned: enum { align_after, dont_align }, reader: anytype) ReadError!@This() {
+    pub fn readType(arena: std.mem.Allocator, kind: Type, size: u32, alignment: enum { align_after, dont_align }, reader: anytype) ReadError!@This() {
         switch (kind) {
             inline else => |tag| {
                 const WireType = @FieldType(@This(), @tagName(tag));
                 const payload = try WireType.read(arena, size, reader);
                 const pod = @unionInit(@This(), @tagName(tag), payload);
-                if (aligned == .align_after) {
-                    try reader.skipBytes(std.mem.alignForward(usize, size, 8) - size, .{});
-                }
+                if (alignment == .align_after) try reader.skipBytes(std.mem.alignForward(usize, size, 8) - size, .{});
                 return pod;
             },
         }
@@ -84,123 +87,33 @@ pub const Pod = union(spa.id.Pod) {
     }
 
     pub fn map(self: @This(), T: type) MapError!T {
-        return switch (T) {
-            Pod => self,
-            containers.Prop.Map,
-            containers.KeyValue.Map,
-            containers.KeyPod.Map,
-            containers.ParamInfo.Map,
-            containers.IdPermission.List,
-            containers.Label.List,
-            containers.Class.List,
-            => .init(self),
-            else => switch (self) {
-                inline else => |pod| pod.map(T),
+        return switch (@typeInfo(T)) {
+            .optional => |ti| self.map(ti.child) catch null,
+            else => switch (T) {
+                Pod => self,
+                containers.Prop.Map,
+                containers.KeyValue.Map,
+                containers.KeyPod.Map,
+                containers.ParamInfo.Map,
+                containers.IdPermission.List,
+                containers.Label.List,
+                containers.Class.List,
+                => .init(self),
+                else => switch (self) {
+                    inline else => |pod| pod.map(T),
+                },
             },
         };
     }
 
     pub fn writeSelf(self: @This(), writer: anytype) WriteError!void {
         switch (self) {
-            inline else => |v| try v.writeSelf(writer),
+            inline else => |v| try v.writeSelf(writer, .{}),
         }
-    }
-
-    fn writeKvs(val: anytype, writer: anytype) !void {
-        var counter = std.io.countingWriter(std.io.null_writer);
-        const len: u32 = @intCast(val.len);
-        try write(len, counter.writer());
-        for (val) |kv| inline for (std.meta.fields(std.meta.Child(@TypeOf(val)))) |field| {
-            try write(@field(kv, field.name), counter.writer());
-        };
-        const header: types.Header = .{
-            .type = .@"struct",
-            .size = @intCast(counter.bytes_written),
-        };
-        try writer.writeAll(std.mem.asBytes(&header));
-        try write(len, writer);
-        for (val) |kv| inline for (std.meta.fields(std.meta.Child(@TypeOf(val)))) |field| {
-            try write(@field(kv, field.name), writer);
-        };
     }
 
     pub fn write(val: anytype, writer: anytype) WriteError!void {
-        switch (@TypeOf(val)) {
-            Pod => try val.writeSelf(writer),
-            types.Id,
-            spa.id.Pod,
-            spa.id.Object,
-            spa.wire.ParamType,
-            => try types.Id.write(val, writer),
-            spa.wire.Key, spa.wire.Name => try types.String.write(@tagName(val), writer),
-            types.Fd => try types.Fd.write(val, writer),
-            []const containers.Prop,
-            []const containers.KeyValue,
-            []const containers.ParamInfo,
-            []const containers.IdPermission,
-            => try writeKvs(val, writer),
-            else => |T| switch (@typeInfo(T)) {
-                .void => try types.None.write(val, writer),
-                .bool => try types.Bool.write(val, writer),
-                .int => |ti| {
-                    if (ti.bits <= 32) {
-                        try types.Int.write(@intCast(val), writer);
-                    } else if (ti.bits <= 64) {
-                        try types.Long.write(@intCast(val), writer);
-                    } else {
-                        @compileError("integers larger than 64 bits cannot be written");
-                    }
-                },
-                .@"enum" => |ti| {
-                    const tag: ti.tag_type = @intFromEnum(val);
-                    try write(tag, writer);
-                },
-                .float => |ti| {
-                    if (ti.bits <= 32) {
-                        try types.Float.write(@floatCast(val), writer);
-                    } else if (ti.bits <= 64) {
-                        try types.Double.write(@floatCast(val), writer);
-                    } else {
-                        @compileError("floats larger than 64 bits cannot be written");
-                    }
-                },
-                .pointer => |ti| switch (ti.size) {
-                    .slice => switch (ti.child) {
-                        u8 => {
-                            if (ti.sentinel() == 0) {
-                                try types.String.write(val, writer);
-                            } else {
-                                try types.Bytes.write(val, writer);
-                            }
-                        },
-                        else => try types.Array.write(val, writer),
-                    },
-                    else => try types.Pointer.write(val, writer),
-                },
-                .array => |ti| switch (ti.child) {
-                    u8 => {
-                        if (ti.sentinel() == 0) {
-                            try types.String.write(val[0.. :0], writer);
-                        } else {
-                            try types.Bytes.write(val[0..], writer);
-                        }
-                    },
-                    else => try types.Array.write(val[0..], writer),
-                },
-                .@"struct" => |ti| switch (ti.layout) {
-                    .@"packed" => {
-                        const int: ti.backing_integer.? = @bitCast(val);
-                        try write(int, writer);
-                    },
-                    else => try types.Struct.write(val, writer),
-                },
-                .optional => switch (val) {
-                    null => try write({}, writer),
-                    else => |child| write(child, writer),
-                },
-                else => @compileError(std.fmt.comptimePrint("type `{}` is not supported", .{@TypeOf(val)})),
-            },
-        }
+        try types.Convert(@TypeOf(val)).write(val, writer, .{});
     }
 
     pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
