@@ -5,7 +5,7 @@
         .codegen = .{ .path = "codegen", .lazy = true },
     },
     .paths = .{
-        "codegen"
+        "codegen",
         "build.zig",
         "build.zig.zon",
         "src",
