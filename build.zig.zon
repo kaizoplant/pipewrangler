@@ -1,11 +1,7 @@
 .{
     .name = "pipewrangler",
     .version = "0.0.0",
-    .dependencies = .{
-        .codegen = .{ .path = "codegen", .lazy = true },
-    },
     .paths = .{
-        "codegen",
         "build.zig",
         "build.zig.zon",
         "src",

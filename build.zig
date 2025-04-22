@@ -1,5 +1,4 @@
 const std = @import("std");
-const codegen_components = @import("codegen").components;
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -50,25 +49,6 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(&cmd.step);
     }
 
-    // XXX: lazy steps not possible with steps <https://github.com/ziglang/zig/issues/21525>
-    const enable_codegen = b.option(bool, "codegen", "enable codegen") orelse false;
-
-    if (enable_codegen) {
-        if (b.lazyDependency("codegen", .{})) |codegen| {
-            const codegen_all = b.step("codegen", "Run all codegen steps");
-            inline for (codegen_components) |component| {
-                const dir = codegen.namedLazyPath(@tagName(component));
-                const install = b.addInstallDirectory(.{
-                    .source_dir = dir,
-                    .install_dir = .{ .custom = @tagName(component) },
-                    .install_subdir = "generated",
-                });
-                var run = b.step("codegen:" ++ @tagName(component), "Generate code for " ++ @tagName(component) ++ " component");
-                run.dependOn(&install.step);
-                codegen_all.dependOn(&install.step);
-            }
-        }
-    }
 }
 
 fn makeRunStep(b: *std.Build, step: *std.Build.Step.Compile, name: []const u8, description: []const u8) *std.Build.Step.Run {
